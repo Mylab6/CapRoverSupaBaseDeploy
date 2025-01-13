@@ -1,46 +1,119 @@
 {
   "schemaVersion": 2,
-  "imageName": "supabase-studio-deployment",
   "services": {
-    "db": {
-      "image": "supabase/postgres:15.6.1.146",
-      "containerHttpPort": "5432",
-      "volumes": [
-        "db_data:/var/lib/postgresql/data"
-      ],
-      "environment": {
-        "POSTGRES_PASSWORD": "$$POSTGRES_PASSWORD",
-        "POSTGRES_DB": "$$POSTGRES_DB",
-        "POSTGRES_HOST": "$$POSTGRES_HOST",
-        "POSTGRES_PORT": "$$POSTGRES_PORT"
-      }
-    },
     "studio": {
       "image": "supabase/studio:20241202-71e5240",
       "containerHttpPort": "3000",
+      "depends_on": ["analytics"],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://studio:3000/api/profile').then((r) => {if (r.status !== 200) throw new Error(r.status)})"
+        ],
+        "interval": "5s",
+        "timeout": "10s",
+        "retries": 3
+      },
       "environment": {
         "STUDIO_PG_META_URL": "$$STUDIO_PG_META_URL",
+        "POSTGRES_PASSWORD": "$$POSTGRES_PASSWORD",
+        "DEFAULT_ORGANIZATION_NAME": "$$STUDIO_DEFAULT_ORGANIZATION",
+        "DEFAULT_PROJECT_NAME": "$$STUDIO_DEFAULT_PROJECT",
+        "OPENAI_API_KEY": "$$OPENAI_API_KEY",
         "SUPABASE_URL": "$$SUPABASE_URL",
         "SUPABASE_PUBLIC_URL": "$$SUPABASE_PUBLIC_URL",
         "SUPABASE_ANON_KEY": "$$ANON_KEY",
         "SUPABASE_SERVICE_KEY": "$$SERVICE_ROLE_KEY",
-        "AUTH_JWT_SECRET": "$$JWT_SECRET"
+        "AUTH_JWT_SECRET": "$$JWT_SECRET",
+        "LOGFLARE_API_KEY": "$$LOGFLARE_API_KEY",
+        "LOGFLARE_URL": "$$LOGFLARE_URL",
+        "NEXT_PUBLIC_ENABLE_LOGS": "true",
+        "NEXT_ANALYTICS_BACKEND_PROVIDER": "$$NEXT_ANALYTICS_BACKEND_PROVIDER"
       }
     },
     "kong": {
       "image": "kong:2.8.1",
       "containerHttpPort": "8000",
+      "entrypoint": [
+        "bash",
+        "-c",
+        "eval \"echo \\\"$$(cat ~/temp.yml)\\\"\" > ~/kong.yml && /docker-entrypoint.sh kong docker-start"
+      ],
+      "ports": [
+        "${KONG_HTTP_PORT:-8000}:8000/tcp",
+        "${KONG_HTTPS_PORT:-8443}:8443/tcp"
+      ],
+      "depends_on": ["analytics"],
       "environment": {
         "KONG_DATABASE": "off",
-        "KONG_DECLARATIVE_CONFIG": "/usr/local/kong/kong.yml",
+        "KONG_DECLARATIVE_CONFIG": "/home/kong/kong.yml",
         "SUPABASE_ANON_KEY": "$$ANON_KEY",
-        "SUPABASE_SERVICE_KEY": "$$SERVICE_ROLE_KEY",
-        "KONG_PROXY_LISTEN": "0.0.0.0:8000"
+        "SUPABASE_SERVICE_KEY": "$$SERVICE_ROLE_KEY"
+      },
+      "volumes": ["./volumes/api/kong.yml:/home/kong/temp.yml:ro"]
+    },
+    "db": {
+      "image": "supabase/postgres:15.6.1.146",
+      "containerHttpPort": "5432",
+      "environment": {
+        "POSTGRES_PASSWORD": "$$POSTGRES_PASSWORD",
+        "POSTGRES_DB": "$$POSTGRES_DB",
+        "JWT_SECRET": "$$JWT_SECRET"
+      },
+      "volumes": ["db-data:/var/lib/postgresql/data"],
+      "healthcheck": {
+        "test": ["CMD-SHELL", "pg_isready -U postgres -h localhost"],
+        "interval": "5s",
+        "timeout": "5s",
+        "retries": 10
       }
+    },
+    "rest": {
+      "image": "postgrest/postgrest:v12.2.0",
+      "containerHttpPort": "3000",
+      "depends_on": ["db"],
+      "environment": {
+        "PGRST_DB_URI": "postgres://authenticator:$$POSTGRES_PASSWORD@db:5432/$$POSTGRES_DB",
+        "PGRST_DB_SCHEMAS": "$$PGRST_DB_SCHEMAS",
+        "PGRST_DB_ANON_ROLE": "anon",
+        "PGRST_JWT_SECRET": "$$JWT_SECRET"
+      }
+    },
+    "analytics": {
+      "image": "supabase/logflare:1.4.0",
+      "containerHttpPort": "4000",
+      "depends_on": ["db"],
+      "environment": {
+        "LOGFLARE_NODE_HOST": "127.0.0.1",
+        "DB_USERNAME": "supabase_admin",
+        "DB_DATABASE": "_supabase",
+        "DB_HOSTNAME": "db",
+        "DB_PORT": "5432",
+        "DB_PASSWORD": "$$POSTGRES_PASSWORD",
+        "DB_SCHEMA": "_analytics",
+        "LOGFLARE_API_KEY": "$$LOGFLARE_API_KEY",
+        "LOGFLARE_SINGLE_TENANT": "true"
+      }
+    },
+    "storage": {
+      "image": "supabase/storage-api:v1.11.13",
+      "containerHttpPort": "5000",
+      "depends_on": ["db", "rest"],
+      "environment": {
+        "ANON_KEY": "$$ANON_KEY",
+        "SERVICE_KEY": "$$SERVICE_ROLE_KEY",
+        "POSTGREST_URL": "$$POSTGREST_URL",
+        "DATABASE_URL": "postgres://supabase_storage_admin:$$POSTGRES_PASSWORD@db:5432/$$POSTGRES_DB",
+        "FILE_STORAGE_BACKEND_PATH": "/var/lib/storage"
+      },
+      "volumes": ["storage-data:/var/lib/storage"]
     }
   },
   "volumes": {
-    "db_data": {}
+    "db-data": {},
+    "storage-data": {}
   },
   "caproverOneClickAppVariables": [
     {
@@ -52,16 +125,6 @@
       "id": "POSTGRES_DB",
       "label": "PostgreSQL Database Name",
       "defaultValue": "supabase"
-    },
-    {
-      "id": "POSTGRES_HOST",
-      "label": "PostgreSQL Host",
-      "defaultValue": "db"
-    },
-    {
-      "id": "POSTGRES_PORT",
-      "label": "PostgreSQL Port",
-      "defaultValue": "5432"
     },
     {
       "id": "SUPABASE_PUBLIC_URL",
@@ -92,9 +155,24 @@
       "id": "JWT_SECRET",
       "label": "JWT Secret",
       "defaultValue": "a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6"
+    },
+    {
+      "id": "LOGFLARE_API_KEY",
+      "label": "Logflare API Key",
+      "defaultValue": "exampleLogflareApiKey"
+    },
+    {
+      "id": "LOGFLARE_URL",
+      "label": "Logflare URL",
+      "defaultValue": "http://analytics:4000"
+    },
+    {
+      "id": "NEXT_ANALYTICS_BACKEND_PROVIDER",
+      "label": "Analytics Backend Provider",
+      "defaultValue": "postgres"
     }
   ],
   "instructions": {
-    "start": "Deploy this repository to CapRover. Configure the environment variables in the CapRover UI to customize the deployment."
+    "start": "Deploy this configuration in CapRover. Customize environment variables as needed."
   }
 }
