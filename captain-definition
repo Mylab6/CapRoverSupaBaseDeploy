@@ -1,0 +1,100 @@
+{
+    "schemaVersion": 2,
+    "services": {
+      "db": {
+        "image": "supabase/postgres:15.6.1.146",
+        "containerHttpPort": "5432",
+        "volumes": [
+          "db_data:/var/lib/postgresql/data"
+        ],
+        "environment": {
+          "POSTGRES_PASSWORD": "$$POSTGRES_PASSWORD",
+          "POSTGRES_DB": "$$POSTGRES_DB",
+          "POSTGRES_HOST": "$$POSTGRES_HOST",
+          "POSTGRES_PORT": "$$POSTGRES_PORT"
+        }
+      },
+      "studio": {
+        "image": "supabase/studio:20241202-71e5240",
+        "containerHttpPort": "3000",
+        "environment": {
+          "STUDIO_PG_META_URL": "$$STUDIO_PG_META_URL",
+          "SUPABASE_URL": "$$SUPABASE_URL",
+          "SUPABASE_PUBLIC_URL": "$$SUPABASE_PUBLIC_URL",
+          "SUPABASE_ANON_KEY": "$$ANON_KEY",
+          "SUPABASE_SERVICE_KEY": "$$SERVICE_ROLE_KEY",
+          "AUTH_JWT_SECRET": "$$JWT_SECRET"
+        }
+      },
+      "kong": {
+        "image": "kong:2.8.1",
+        "containerHttpPort": "8000",
+        "environment": {
+          "KONG_DATABASE": "off",
+          "KONG_DECLARATIVE_CONFIG": "/usr/local/kong/kong.yml",
+          "SUPABASE_ANON_KEY": "$$ANON_KEY",
+          "SUPABASE_SERVICE_KEY": "$$SERVICE_ROLE_KEY",
+          "KONG_PROXY_LISTEN": "0.0.0.0:8000"
+        }
+      }
+    },
+    "volumes": {
+      "db_data": {}
+    },
+    "caproverOneClickAppVariables": [
+      {
+        "id": "POSTGRES_PASSWORD",
+        "label": "PostgreSQL Password",
+        "defaultValue": "P@ssw0rd!eF#74LsA"
+      },
+      {
+        "id": "POSTGRES_DB",
+        "label": "PostgreSQL Database Name",
+        "defaultValue": "supabase"
+      },
+      {
+        "id": "POSTGRES_HOST",
+        "label": "PostgreSQL Host",
+        "defaultValue": "db"
+      },
+      {
+        "id": "POSTGRES_PORT",
+        "label": "PostgreSQL Port",
+        "defaultValue": "5432"
+      },
+      {
+        "id": "SUPABASE_PUBLIC_URL",
+        "label": "Supabase Public URL",
+        "defaultValue": "https://example.captain.bqglabs.com"
+      },
+      {
+        "id": "SUPABASE_URL",
+        "label": "Supabase Internal URL",
+        "defaultValue": "http://kong:8000"
+      },
+      {
+        "id": "STUDIO_PG_META_URL",
+        "label": "Studio PG Meta URL",
+        "defaultValue": "http://db:5432"
+      },
+      {
+        "id": "ANON_KEY",
+        "label": "Anon Key",
+        "defaultValue": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.exampleAnonKey.5678901234"
+      },
+      {
+        "id": "SERVICE_ROLE_KEY",
+        "label": "Service Role Key",
+        "defaultValue": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.exampleServiceRoleKey.4321098765"
+      },
+      {
+        "id": "JWT_SECRET",
+        "label": "JWT Secret",
+        "defaultValue": "a1b2c3d4-5e6f-7g8h-9i0j-k1l2m3n4o5p6"
+      }
+    ],
+    "instructions": {
+      "start": "Deploy this repository to CapRover. Configure the environment variables in the CapRover UI to customize the deployment."
+    }
+  }
+  
